@@ -11,6 +11,7 @@ import {
   StatusBar,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { styles } from "./styles";
 
 const API_URL = "http://192.168.1.139:5000";
 
@@ -338,109 +339,3 @@ export default function App() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#09090b", paddingTop: 20 },
-  authCard: { flex: 1, justifyContent: "center", paddingHorizontal: 24 },
-  title: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#f4f4f5",
-    textAlign: "center",
-    marginBottom: 24,
-  },
-  input: {
-    backgroundColor: "#18181b",
-    borderWidth: 1,
-    borderColor: "#27272a",
-    borderRadius: 6,
-    padding: 12,
-    color: "#f4f4f5",
-    marginBottom: 16,
-    fontSize: 14,
-  },
-  button: {
-    backgroundColor: "#f4f4f5",
-    padding: 14,
-    borderRadius: 6,
-    alignItems: "center",
-    marginTop: 8,
-  },
-  buttonText: { color: "#09090b", fontWeight: "bold", fontSize: 14 },
-  switchText: {
-    color: "#a1a1aa",
-    textAlign: "center",
-    marginTop: 16,
-    fontSize: 14,
-  },
-  errorText: {
-    color: "#f87171",
-    backgroundColor: "#450a0a",
-    padding: 10,
-    borderRadius: 4,
-    marginBottom: 16,
-    textAlign: "center",
-    fontSize: 14,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#27272a",
-    justifyContent: "space-between",
-  },
-  headerTitle: { fontSize: 20, fontWeight: "bold", color: "#f4f4f5" },
-  logoutButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    backgroundColor: "#18181b",
-    borderWidth: 1,
-    borderColor: "#27272a",
-    borderRadius: 4,
-  },
-  logoutText: { color: "#e4e4e7", fontSize: 12 },
-  todoForm: { flexDirection: "row", padding: 20 },
-  addButton: {
-    backgroundColor: "#f4f4f5",
-    width: 48,
-    height: 48,
-    borderRadius: 6,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  addButtonText: { color: "#09090b", fontSize: 24, fontWeight: "bold" },
-  listContainer: { paddingHorizontal: 20 },
-  todoItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#18181b",
-    padding: 14,
-    borderRadius: 8,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "#27272a",
-  },
-  checkbox: {
-    width: 18,
-    height: 18,
-    borderRadius: 4,
-    borderWidth: 2,
-    borderColor: "#52525b",
-    marginRight: 12,
-  },
-  checkboxChecked: { backgroundColor: "#a1a1aa", borderColor: "#a1a1aa" },
-  todoText: { color: "#e4e4e7", fontSize: 14, flex: 1 },
-  todoTextCompleted: { textDecorationLine: "line-through", color: "#52525b" },
-  editInput: {
-    color: "#f4f4f5",
-    fontSize: 14,
-    flex: 1,
-    backgroundColor: "#09090b",
-    padding: 4,
-    borderRadius: 4,
-  },
-  actions: { flexDirection: "row", gap: 10 },
-  actionBtn: { padding: 4 },
-});
