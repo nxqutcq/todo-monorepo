@@ -13,6 +13,7 @@
 ```bash
 cd backend
 npm install
+cp .env.example .env
 npm run dev
 ```
 *Для запуска интеграционных тестов:* `npm run test`
