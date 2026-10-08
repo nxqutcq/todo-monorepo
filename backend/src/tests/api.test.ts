@@ -6,7 +6,11 @@ import { connectDb, disconnectDb } from "../db.js";
 import { getMongoUri } from "../config.js";
 
 function testMongoUri(): string {
-  return getMongoUri().replace(/mongodb\.net\/[^?]*/, "mongodb.net/todo_test");
+  const uri = getMongoUri();
+  if (uri.includes("mongodb.net")) {
+    return uri.replace(/mongodb\.net\/[^?]*/, "mongodb.net/todo_test");
+  }
+  return uri;
 }
 
 describe("Тестирование API согласно ТЗ", () => {
