@@ -2,6 +2,7 @@ import { Response } from "express";
 import mongoose from "mongoose";
 import { Todo } from "../models/Todo.js";
 import { AuthRequest } from "../middleware/authMiddleware.js";
+import { getFile, objectKeyForTodo, putFile } from "../storage.js";
 
 function isOwnedBy(
   todoUserId: mongoose.Types.ObjectId,
@@ -114,5 +115,96 @@ export const deleteTodo = async (
     res.status(200).json({ message: "Задача успешно удалена" });
   } catch (error) {
     res.status(500).json({ message: "Ошибка при удалении задачи" });
+  }
+};
+
+export const uploadAttachment = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.userId;
+
+    if (!mongoose.isValidObjectId(id)) {
+      res.status(404).json({ message: "Задача не найдена" });
+      return;
+    }
+
+    const todo = await Todo.findById(id);
+    if (!todo) {
+      res.status(404).json({ message: "Задача не найдена" });
+      return;
+    }
+
+    if (!isOwnedBy(todo.userId, userId)) {
+      res.status(403).json({ message: "Нет доступа к чужой задаче" });
+      return;
+    }
+
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ message: "Файл обязателен" });
+      return;
+    }
+
+    const key = objectKeyForTodo(id, file.originalname);
+    await putFile(key, file.buffer, file.mimetype || "application/octet-stream");
+
+    todo.attachmentKey = key;
+    await todo.save();
+
+    res.status(200).json(todo);
+  } catch (error) {
+    console.error("Ошибка загрузки файла:", error);
+    res.status(500).json({ message: "Ошибка при загрузке файла" });
+  }
+};
+
+export const downloadAttachment = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.userId;
+
+    if (!mongoose.isValidObjectId(id)) {
+      res.status(404).json({ message: "Задача не найдена" });
+      return;
+    }
+
+    const todo = await Todo.findById(id);
+    if (!todo) {
+      res.status(404).json({ message: "Задача не найдена" });
+      return;
+    }
+
+    if (!isOwnedBy(todo.userId, userId)) {
+      res.status(403).json({ message: "Нет доступа к чужой задаче" });
+      return;
+    }
+
+    if (!todo.attachmentKey) {
+      res.status(404).json({ message: "Файл не найден" });
+      return;
+    }
+
+    const stored = await getFile(todo.attachmentKey);
+    if (!stored) {
+      res.status(404).json({ message: "Файл не найден" });
+      return;
+    }
+
+    const filename = todo.attachmentKey.split("/").pop() || "attachment";
+    res.setHeader("Content-Type", stored.contentType);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${filename}"`,
+    );
+    res.status(200).send(stored.body);
+  } catch (error) {
+    console.error("Ошибка скачивания файла:", error);
+    res.status(500).json({ message: "Ошибка при скачивании файла" });
   }
 };

@@ -71,4 +71,34 @@ export const api = {
     if (!res.ok) throw new Error("Не удалось удалить задачу");
     return res.json();
   },
+
+  uploadAttachment: async (id: string, file: File) => {
+    const token = localStorage.getItem("token");
+    const body = new FormData();
+    body.append("file", file);
+    const res = await fetch(`${BASE_URL}/todos/${id}/attachment`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body,
+    });
+    if (!res.ok) throw new Error("Не удалось загрузить файл");
+    return res.json();
+  },
+
+  downloadAttachment: async (id: string) => {
+    const res = await fetch(`${BASE_URL}/todos/${id}/attachment`, {
+      headers: getHeaders(),
+    });
+    if (!res.ok) throw new Error("Не удалось скачать файл");
+    const blob = await res.blob();
+    const disposition = res.headers.get("Content-Disposition") || "";
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    const filename = match?.[1] || "attachment";
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  },
 };

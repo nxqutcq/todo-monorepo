@@ -4,6 +4,7 @@ export interface ITodo extends Document {
   title: string;
   completed: boolean;
   userId: Types.ObjectId;
+  attachmentKey?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -23,6 +24,9 @@ const todoSchema = new Schema<ITodo>(
       type: Schema.Types.ObjectId,
       ref: "User",
       required: true,
+    },
+    attachmentKey: {
+      type: String,
     },
   },
   {

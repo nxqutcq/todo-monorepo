@@ -11,6 +11,9 @@ import {
   StatusBar,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
+import * as Sharing from "expo-sharing";
 import { styles } from "./styles";
 
 const API_URL = "https://51.20.85.74.sslip.io";
@@ -20,6 +23,7 @@ interface Todo {
   title: string;
   completed: boolean;
   userId: string;
+  attachmentKey?: string;
 }
 
 export default function App() {
@@ -170,6 +174,59 @@ export default function App() {
       }
     } catch (err) {
       setError("Ошибка обновления текста");
+    }
+  };
+
+  const handleUploadAttachment = async (id: string) => {
+    try {
+      const picked = await DocumentPicker.getDocumentAsync({
+        copyToCacheDirectory: true,
+      });
+      if (picked.canceled || !picked.assets?.[0]) return;
+
+      const file = picked.assets[0];
+      const token = await AsyncStorage.getItem("token");
+      const body = new FormData();
+      body.append("file", {
+        uri: file.uri,
+        name: file.name,
+        type: file.mimeType || "application/octet-stream",
+      } as never);
+
+      const res = await fetch(`${API_URL}/todos/${id}/attachment`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body,
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
+      } else {
+        setError("Ошибка загрузки файла");
+      }
+    } catch (err) {
+      setError("Ошибка загрузки файла");
+    }
+  };
+
+  const handleDownloadAttachment = async (id: string) => {
+    try {
+      const token = await AsyncStorage.getItem("token");
+      const target = `${FileSystem.cacheDirectory}attachment-${id}`;
+      const result = await FileSystem.downloadAsync(
+        `${API_URL}/todos/${id}/attachment`,
+        target,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+      );
+      if (result.status !== 200) {
+        setError("Ошибка скачивания файла");
+        return;
+      }
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(result.uri);
+      }
+    } catch (err) {
+      setError("Ошибка скачивания файла");
     }
   };
 
@@ -324,6 +381,20 @@ export default function App() {
                   <Text style={{ color: "#a1a1aa", fontSize: 12 }}>Ред.</Text>
                 </TouchableOpacity>
               )}
+              <TouchableOpacity
+                onPress={() => handleUploadAttachment(item.id)}
+                style={styles.actionBtn}
+              >
+                <Text style={{ color: "#a1a1aa", fontSize: 12 }}>Файл</Text>
+              </TouchableOpacity>
+              {item.attachmentKey ? (
+                <TouchableOpacity
+                  onPress={() => handleDownloadAttachment(item.id)}
+                  style={styles.actionBtn}
+                >
+                  <Text style={{ color: "#a1a1aa", fontSize: 12 }}>Скач.</Text>
+                </TouchableOpacity>
+              ) : null}
               <TouchableOpacity
                 onPress={() => handleDeleteTodo(item.id)}
                 style={styles.actionBtn}

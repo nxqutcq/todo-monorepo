@@ -7,6 +7,7 @@ interface Todo {
   title: string;
   completed: boolean;
   userId: string;
+  attachmentKey?: string;
 }
 
 export const TodoPage: React.FC = () => {
@@ -105,6 +106,26 @@ export const TodoPage: React.FC = () => {
   const handleLogout = () => {
     api.logout();
     navigate("/");
+  };
+
+  const handleUpload = async (id: string, file?: File) => {
+    if (!file) return;
+    try {
+      const updated = await api.uploadAttachment(id, file);
+      setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
+    } catch (err) {
+      const errorObject = err as Error;
+      setError(errorObject.message || "Ошибка при загрузке файла");
+    }
+  };
+
+  const handleDownload = async (id: string) => {
+    try {
+      await api.downloadAttachment(id);
+    } catch (err) {
+      const errorObject = err as Error;
+      setError(errorObject.message || "Ошибка при скачивании файла");
+    }
   };
 
   return (
@@ -215,6 +236,26 @@ export const TodoPage: React.FC = () => {
                       Редактировать
                     </button>
                   )}
+
+                  <label className="text-xs px-2 py-1 bg-zinc-900 border border-zinc-800 text-zinc-400 rounded hover:text-zinc-200 hover:border-zinc-700 cursor-pointer">
+                    Файл
+                    <input
+                      type="file"
+                      className="hidden"
+                      onChange={(e) =>
+                        handleUpload(todo.id, e.target.files?.[0])
+                      }
+                    />
+                  </label>
+
+                  {todo.attachmentKey ? (
+                    <button
+                      onClick={() => handleDownload(todo.id)}
+                      className="text-xs px-2 py-1 bg-zinc-900 border border-zinc-800 text-zinc-400 rounded hover:text-zinc-200 hover:border-zinc-700"
+                    >
+                      Скачать
+                    </button>
+                  ) : null}
 
                   <button
                     onClick={() => handleDelete(todo.id)}

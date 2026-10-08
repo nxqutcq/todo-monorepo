@@ -99,4 +99,52 @@ describe("Тестирование API согласно ТЗ", () => {
     expect(badTodoRes.status).toBe(400);
     expect(badTodoRes.body.message).toBe("Текст задачи обязателен");
   });
+
+  it("Вложение может загрузить и скачать только владелец задачи", async () => {
+    await request(app)
+      .post("/auth/register")
+      .send({ email: "owner@test.com", password: "password123" });
+    const ownerAuth = await request(app)
+      .post("/auth/login")
+      .send({ email: "owner@test.com", password: "password123" });
+
+    const created = await request(app)
+      .post("/todos")
+      .set("Authorization", `Bearer ${ownerAuth.body.token}`)
+      .send({ title: "С файлом" });
+
+    const uploaded = await request(app)
+      .post(`/todos/${created.body.id}/attachment`)
+      .set("Authorization", `Bearer ${ownerAuth.body.token}`)
+      .attach("file", Buffer.from("hello-s3"), "notes.txt");
+
+    expect(uploaded.status).toBe(200);
+    expect(uploaded.body.attachmentKey).toMatch(/notes.txt$/);
+    expect(uploaded.body.attachmentKey).not.toMatch(/^https?:\/\//);
+
+    const downloaded = await request(app)
+      .get(`/todos/${created.body.id}/attachment`)
+      .set("Authorization", `Bearer ${ownerAuth.body.token}`);
+
+    expect(downloaded.status).toBe(200);
+    expect(downloaded.text).toBe("hello-s3");
+
+    await request(app)
+      .post("/auth/register")
+      .send({ email: "other@test.com", password: "password123" });
+    const otherAuth = await request(app)
+      .post("/auth/login")
+      .send({ email: "other@test.com", password: "password123" });
+
+    const stolenGet = await request(app)
+      .get(`/todos/${created.body.id}/attachment`)
+      .set("Authorization", `Bearer ${otherAuth.body.token}`);
+    expect(stolenGet.status).toBe(403);
+
+    const stolenPost = await request(app)
+      .post(`/todos/${created.body.id}/attachment`)
+      .set("Authorization", `Bearer ${otherAuth.body.token}`)
+      .attach("file", Buffer.from("hack"), "hack.txt");
+    expect(stolenPost.status).toBe(403);
+  });
 });

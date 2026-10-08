@@ -50,3 +50,8 @@ sudo systemctl restart caddy
 ```
 ### База данных
 Бэкенд подключается к **MongoDB Atlas** через `MONGODB_URI` в `backend/.env`. Скопируй `backend/.env.example` и подставь свою строку подключения.
+
+### Вложения (S3)
+К задаче можно прикрепить один файл. Он лежит в **приватном** бакете S3 (Block Public Access). В MongoDB сохраняется только ключ объекта (`attachmentKey`), не публичная ссылка. Скачивание только через `GET /todos/:id/attachment` с JWT владельца.
+
+На EC2 в `.env` добавь `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`.
