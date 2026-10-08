@@ -8,7 +8,7 @@ applications:
             - npm ci
         build:
           commands:
-            - echo "VITE_API_URL=http://51.20.85.74:5000" >> .env
+            - echo "VITE_API_URL=https://51.20.85.74.sslip.io" >> .env
             - npm run build
       artifacts:
         baseDirectory: dist

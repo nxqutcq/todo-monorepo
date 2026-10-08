@@ -13,7 +13,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { styles } from "./styles";
 
-const API_URL = "http://51.20.85.74:5000";
+const API_URL = "https://51.20.85.74.sslip.io";
 
 interface Todo {
   id: string;

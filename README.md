@@ -32,9 +32,21 @@ npm install
 npm run start
 ```
 ## API на EC2
-Веб и мобильное приложение ходят на опубликованный сервер:
-```typescript
-http://51.20.85.74:5000
+Клиенты ходят на HTTPS (иначе Amplify блокирует Mixed Content):
+```text
+https://51.20.85.74.sslip.io
+```
+На EC2 Node слушает `127.0.0.1:5000`, снаружи HTTPS даёт Caddy (`Caddyfile` в корне репо). В Security Group открой **80** и **443**.
+
+```bash
+sudo apt-get update
+sudo apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+sudo apt-get update
+sudo apt-get install -y caddy
+sudo cp ~/todo-monorepo/Caddyfile /etc/caddy/Caddyfile
+sudo systemctl restart caddy
 ```
 ### База данных
 Бэкенд подключается к **MongoDB Atlas** через `MONGODB_URI` в `backend/.env`. Скопируй `backend/.env.example` и подставь свою строку подключения.
