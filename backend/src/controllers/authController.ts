@@ -1,9 +1,8 @@
 import { Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { usersDb } from "../models/mockDb.js";
-
-const JWT_SECRET = process.env.JWT_SECRET || "super_secret_key_2026";
+import { User } from "../models/User.js";
+import { getJwtSecret } from "../config.js";
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -14,9 +13,9 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const candidate = usersDb.find(
-      (u) => u.email.toLowerCase() === email.toLowerCase(),
-    );
+    const candidate = await User.findOne({
+      email: String(email).toLowerCase(),
+    });
     if (candidate) {
       res
         .status(400)
@@ -27,12 +26,10 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    const newUser = {
-      id: Date.now().toString(),
+    await User.create({
       email,
       passwordHash,
-    };
-    usersDb.push(newUser);
+    });
 
     res.status(201).json({ message: "Пользователь успешно зарегистрирован" });
   } catch (error) {
@@ -50,9 +47,9 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const user = usersDb.find(
-      (u) => u.email.toLowerCase() === email.toLowerCase(),
-    );
+    const user = await User.findOne({
+      email: String(email).toLowerCase(),
+    });
     if (!user) {
       res.status(400).json({ message: "Неверный email или пароль" });
       return;
@@ -64,7 +61,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const token = jwt.sign({ userId: user.id }, JWT_SECRET, {
+    const token = jwt.sign({ userId: user.id }, getJwtSecret(), {
       expiresIn: "30d",
     });
 

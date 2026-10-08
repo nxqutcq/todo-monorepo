@@ -2,11 +2,17 @@ import express, { Request, Response } from "express";
 import cors from "cors";
 import authRoutes from "./routes/authRoutes.js";
 import todoRoutes from "./routes/todoRoutes.js";
+import { getClientOrigins } from "./config.js";
 
 const app = express();
 
-app.use(cors());
-app.use(express.json({ type: ["application/json", "text/plain", "*/*"] }));
+const clientOrigins = getClientOrigins();
+app.use(
+  clientOrigins
+    ? cors({ origin: clientOrigins, credentials: true })
+    : cors(),
+);
+app.use(express.json());
 
 app.use("/auth", authRoutes);
 app.use("/todos", todoRoutes);

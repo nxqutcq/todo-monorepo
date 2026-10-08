@@ -1,7 +1,14 @@
 import { Response } from "express";
-
-import { todosDb } from "../models/mockDb.js";
+import mongoose from "mongoose";
+import { Todo } from "../models/Todo.js";
 import { AuthRequest } from "../middleware/authMiddleware.js";
+
+function isOwnedBy(
+  todoUserId: mongoose.Types.ObjectId,
+  userId?: string,
+): boolean {
+  return Boolean(userId) && String(todoUserId) === userId;
+}
 
 export const getTodos = async (
   req: AuthRequest,
@@ -9,7 +16,7 @@ export const getTodos = async (
 ): Promise<void> => {
   try {
     const userId = req.user?.userId;
-    const userTodos = todosDb.filter((todo) => todo.userId === userId);
+    const userTodos = await Todo.find({ userId });
 
     res.status(200).json(userTodos);
   } catch (error) {
@@ -30,14 +37,12 @@ export const createTodo = async (
       return;
     }
 
-    const newTodo = {
-      id: Date.now().toString(),
+    const newTodo = await Todo.create({
       title,
       completed: false,
-      userId: userId!,
-    };
+      userId,
+    });
 
-    todosDb.push(newTodo);
     res.status(201).json(newTodo);
   } catch (error) {
     res.status(500).json({ message: "Ошибка при создании задачи" });
@@ -53,14 +58,19 @@ export const updateTodo = async (
     const { title, completed } = req.body;
     const userId = req.user?.userId;
 
-    const todo = todosDb.find((t) => t.id === id);
+    if (!mongoose.isValidObjectId(id)) {
+      res.status(404).json({ message: "Задача не найдена" });
+      return;
+    }
+
+    const todo = await Todo.findById(id);
 
     if (!todo) {
       res.status(404).json({ message: "Задача не найдена" });
       return;
     }
 
-    if (todo.userId !== userId) {
+    if (!isOwnedBy(todo.userId, userId)) {
       res.status(403).json({ message: "Нет доступа к чужой задаче" });
       return;
     }
@@ -68,6 +78,7 @@ export const updateTodo = async (
     if (title !== undefined) todo.title = title;
     if (completed !== undefined) todo.completed = completed;
 
+    await todo.save();
     res.status(200).json(todo);
   } catch (error) {
     res.status(500).json({ message: "Ошибка при обновлении задачи" });
@@ -82,19 +93,24 @@ export const deleteTodo = async (
     const { id } = req.params;
     const userId = req.user?.userId;
 
-    const todoIndex = todosDb.findIndex((t) => t.id === id);
-
-    if (todoIndex === -1) {
+    if (!mongoose.isValidObjectId(id)) {
       res.status(404).json({ message: "Задача не найдена" });
       return;
     }
 
-    if (todosDb[todoIndex].userId !== userId) {
+    const todo = await Todo.findById(id);
+
+    if (!todo) {
+      res.status(404).json({ message: "Задача не найдена" });
+      return;
+    }
+
+    if (!isOwnedBy(todo.userId, userId)) {
       res.status(403).json({ message: "Нет доступа к чужой задаче" });
       return;
     }
 
-    todosDb.splice(todoIndex, 1);
+    await todo.deleteOne();
     res.status(200).json({ message: "Задача успешно удалена" });
   } catch (error) {
     res.status(500).json({ message: "Ошибка при удалении задачи" });

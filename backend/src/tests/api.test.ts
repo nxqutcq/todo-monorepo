@@ -1,11 +1,26 @@
 import request from "supertest";
 import app from "../app.js";
-import { usersDb, todosDb } from "../models/mockDb.js";
+import { User } from "../models/User.js";
+import { Todo } from "../models/Todo.js";
+import { connectDb, disconnectDb } from "../db.js";
+import { getMongoUri } from "../config.js";
+
+function testMongoUri(): string {
+  return getMongoUri().replace(/mongodb\.net\/[^?]*/, "mongodb.net/todo_test");
+}
 
 describe("Тестирование API согласно ТЗ", () => {
-  beforeEach(() => {
-    usersDb.length = 0;
-    todosDb.length = 0;
+  beforeAll(async () => {
+    await connectDb(testMongoUri());
+  }, 30000);
+
+  afterEach(async () => {
+    await User.deleteMany({});
+    await Todo.deleteMany({});
+  });
+
+  afterAll(async () => {
+    await disconnectDb();
   });
 
   it("Должен успешно зарегистрировать и авторизовать пользователя, вернув JWT", async () => {
@@ -23,39 +38,36 @@ describe("Тестирование API согласно ТЗ", () => {
   });
 
   it("Чужая задача должна быть недоступна для изменения и удаления", async () => {
-    const user1 = { id: "user1_id", email: "u1@t.com", passwordHash: "hash1" };
-    const user2 = { id: "user2_id", email: "u2@t.com", passwordHash: "hash2" };
-    usersDb.push(user1, user2);
+    await request(app)
+      .post("/auth/register")
+      .send({ email: "u1@test.com", password: "password123" });
+    const user1Auth = await request(app)
+      .post("/auth/login")
+      .send({ email: "u1@test.com", password: "password123" });
 
-    const todoUser1 = {
-      id: "todo_id_1",
-      title: "Задача первого",
-      completed: false,
-      userId: "user1_id",
-    };
-    todosDb.push(todoUser1);
+    const created = await request(app)
+      .post("/todos")
+      .set("Authorization", `Bearer ${user1Auth.body.token}`)
+      .send({ title: "Задача первого" });
 
-    const loginRes = await request(app)
+    await request(app)
       .post("/auth/register")
       .send({ email: "u2@test.com", password: "password123" });
-
-    const authRes = await request(app)
+    const user2Auth = await request(app)
       .post("/auth/login")
       .send({ email: "u2@test.com", password: "password123" });
 
-    const tokenUser2 = authRes.body.token;
-
     const updateRes = await request(app)
-      .put(`/todos/${todoUser1.id}`)
-      .set("Authorization", `Bearer ${tokenUser2}`)
+      .put(`/todos/${created.body.id}`)
+      .set("Authorization", `Bearer ${user2Auth.body.token}`)
       .send({ title: "Хакерская атака", completed: true });
 
     expect(updateRes.status).toBe(403);
     expect(updateRes.body.message).toBe("Нет доступа к чужой задаче");
 
     const deleteRes = await request(app)
-      .delete(`/todos/${todoUser1.id}`)
-      .set("Authorization", `Bearer ${tokenUser2}`);
+      .delete(`/todos/${created.body.id}`)
+      .set("Authorization", `Bearer ${user2Auth.body.token}`);
 
     expect(deleteRes.status).toBe(403);
   });

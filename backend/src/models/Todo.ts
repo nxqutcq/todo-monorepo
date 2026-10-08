@@ -30,4 +30,14 @@ const todoSchema = new Schema<ITodo>(
   },
 );
 
+todoSchema.set("toJSON", {
+  virtuals: true,
+  versionKey: false,
+  transform(_doc, ret) {
+    const value = ret as { id?: string; _id?: unknown };
+    value.id = String(value._id);
+    delete value._id;
+  },
+});
+
 export const Todo = model<ITodo>("Todo", todoSchema);

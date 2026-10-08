@@ -259,7 +259,6 @@ export default function App() {
         </TouchableOpacity>
       </View>
 
-      {}
       <View style={styles.todoForm}>
         <TextInput
           style={[styles.input, { flex: 1, marginBottom: 0, marginRight: 8 }]}
@@ -273,7 +272,6 @@ export default function App() {
         </TouchableOpacity>
       </View>
 
-      {}
       <FlatList
         data={todos}
         keyExtractor={(item) => item.id}
