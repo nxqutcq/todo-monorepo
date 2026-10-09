@@ -17,9 +17,35 @@ export const getTodos = async (
 ): Promise<void> => {
   try {
     const userId = req.user?.userId;
-    const userTodos = await Todo.find({ userId });
+    const filter = String(req.query.filter || "all");
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 10));
 
-    res.status(200).json(userTodos);
+    if (!["all", "active", "done", "overdue"].includes(filter)) {
+      res.status(400).json({ message: "Некорректный фильтр" });
+      return;
+    }
+
+    const now = new Date();
+    const query: Record<string, unknown> = { userId };
+
+    if (filter === "done") {
+      query.completed = true;
+    } else if (filter === "active") {
+      query.completed = false;
+      query.dueDate = { $gte: now };
+    } else if (filter === "overdue") {
+      query.completed = false;
+      query.dueDate = { $lt: now };
+    }
+
+    const total = await Todo.countDocuments(query);
+    const items = await Todo.find(query)
+      .sort({ dueDate: 1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
+
+    res.status(200).json({ items, page, limit, total });
   } catch (error) {
     res.status(500).json({ message: "Ошибка при получении задач" });
   }
@@ -30,7 +56,7 @@ export const createTodo = async (
   res: Response,
 ): Promise<void> => {
   try {
-    const { title } = req.body;
+    const { title, dueDate } = req.body;
     const userId = req.user?.userId;
 
     if (!title) {
@@ -38,10 +64,22 @@ export const createTodo = async (
       return;
     }
 
+    if (!dueDate) {
+      res.status(400).json({ message: "Срок задачи обязателен" });
+      return;
+    }
+
+    const parsedDue = new Date(dueDate);
+    if (Number.isNaN(parsedDue.getTime())) {
+      res.status(400).json({ message: "Некорректный срок задачи" });
+      return;
+    }
+
     const newTodo = await Todo.create({
       title,
       completed: false,
       userId,
+      dueDate: parsedDue,
     });
 
     res.status(201).json(newTodo);
@@ -56,7 +94,7 @@ export const updateTodo = async (
 ): Promise<void> => {
   try {
     const { id } = req.params;
-    const { title, completed } = req.body;
+    const { title, completed, dueDate } = req.body;
     const userId = req.user?.userId;
 
     if (!mongoose.isValidObjectId(id)) {
@@ -78,6 +116,14 @@ export const updateTodo = async (
 
     if (title !== undefined) todo.title = title;
     if (completed !== undefined) todo.completed = completed;
+    if (dueDate !== undefined) {
+      const parsedDue = new Date(dueDate);
+      if (Number.isNaN(parsedDue.getTime())) {
+        res.status(400).json({ message: "Некорректный срок задачи" });
+        return;
+      }
+      todo.dueDate = parsedDue;
+    }
 
     await todo.save();
     res.status(200).json(todo);

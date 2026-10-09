@@ -21,7 +21,7 @@ describe("Тестирование API согласно ТЗ", () => {
   afterEach(async () => {
     await User.deleteMany({});
     await Todo.deleteMany({});
-  });
+  }, 15000);
 
   afterAll(async () => {
     await disconnectDb();
@@ -52,7 +52,10 @@ describe("Тестирование API согласно ТЗ", () => {
     const created = await request(app)
       .post("/todos")
       .set("Authorization", `Bearer ${user1Auth.body.token}`)
-      .send({ title: "Задача первого" });
+      .send({
+        title: "Задача первого",
+        dueDate: new Date(Date.now() + 86400000).toISOString(),
+      });
 
     await request(app)
       .post("/auth/register")
@@ -111,7 +114,10 @@ describe("Тестирование API согласно ТЗ", () => {
     const created = await request(app)
       .post("/todos")
       .set("Authorization", `Bearer ${ownerAuth.body.token}`)
-      .send({ title: "С файлом" });
+      .send({
+        title: "С файлом",
+        dueDate: new Date(Date.now() + 86400000).toISOString(),
+      });
 
     const uploaded = await request(app)
       .post(`/todos/${created.body.id}/attachment`)
@@ -146,5 +152,75 @@ describe("Тестирование API согласно ТЗ", () => {
       .set("Authorization", `Bearer ${otherAuth.body.token}`)
       .attach("file", Buffer.from("hack"), "hack.txt");
     expect(stolenPost.status).toBe(403);
+  });
+
+  it("Фильтрует задачи и отдаёт страницы по умолчанию page=1 limit=10", async () => {
+    await request(app)
+      .post("/auth/register")
+      .send({ email: "filter@test.com", password: "password123" });
+    const auth = await request(app)
+      .post("/auth/login")
+      .send({ email: "filter@test.com", password: "password123" });
+    const token = auth.body.token;
+
+    await request(app)
+      .post("/todos")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        title: "Активная",
+        dueDate: new Date(Date.now() + 86400000).toISOString(),
+      });
+    const overdue = await request(app)
+      .post("/todos")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        title: "Просроченная",
+        dueDate: new Date(Date.now() - 86400000).toISOString(),
+      });
+    await request(app)
+      .put(`/todos/${overdue.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ completed: true });
+    await request(app)
+      .post("/todos")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        title: "Просрочена открытая",
+        dueDate: new Date(Date.now() - 86400000).toISOString(),
+      });
+
+    const allRes = await request(app)
+      .get("/todos")
+      .set("Authorization", `Bearer ${token}`);
+    expect(allRes.status).toBe(200);
+    expect(allRes.body.page).toBe(1);
+    expect(allRes.body.limit).toBe(10);
+    expect(allRes.body.total).toBe(3);
+    expect(allRes.body.items).toHaveLength(3);
+
+    const activeRes = await request(app)
+      .get("/todos?filter=active")
+      .set("Authorization", `Bearer ${token}`);
+    expect(activeRes.body.items).toHaveLength(1);
+    expect(activeRes.body.items[0].title).toBe("Активная");
+
+    const doneRes = await request(app)
+      .get("/todos?filter=done")
+      .set("Authorization", `Bearer ${token}`);
+    expect(doneRes.body.items).toHaveLength(1);
+    expect(doneRes.body.items[0].title).toBe("Просроченная");
+
+    const overdueRes = await request(app)
+      .get("/todos?filter=overdue")
+      .set("Authorization", `Bearer ${token}`);
+    expect(overdueRes.body.items).toHaveLength(1);
+    expect(overdueRes.body.items[0].title).toBe("Просрочена открытая");
+
+    const pageRes = await request(app)
+      .get("/todos?page=2&limit=1")
+      .set("Authorization", `Bearer ${token}`);
+    expect(pageRes.body.page).toBe(2);
+    expect(pageRes.body.limit).toBe(1);
+    expect(pageRes.body.items).toHaveLength(1);
   });
 });

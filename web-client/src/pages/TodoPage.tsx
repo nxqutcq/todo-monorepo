@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../services/api.js";
+import { api, UnauthorizedError, type TodoFilter } from "../services/api.js";
 
 interface Todo {
   id: string;
@@ -8,55 +8,77 @@ interface Todo {
   completed: boolean;
   userId: string;
   attachmentKey?: string;
+  dueDate: string;
 }
+
+const FILTERS: { id: TodoFilter; label: string }[] = [
+  { id: "all", label: "Все" },
+  { id: "active", label: "Активные" },
+  { id: "done", label: "Выполненные" },
+  { id: "overdue", label: "Просроченные" },
+];
 
 export const TodoPage: React.FC = () => {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [newTitle, setNewTitle] = useState("");
+  const [newDueDate, setNewDueDate] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<TodoFilter>("all");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const limit = 10;
 
   const navigate = useNavigate();
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+
+  const handleUnauthorized = useCallback(() => {
+    api.logout();
+    navigate("/", { replace: true });
+  }, [navigate]);
+
+  const loadTodos = useCallback(
+    async (nextFilter = filter, nextPage = page) => {
+      setLoading(true);
+      try {
+        const data = await api.getTodos(nextFilter, nextPage, limit);
+        setTodos(data.items);
+        setTotal(data.total);
+        setPage(data.page);
+      } catch (err) {
+        if (err instanceof UnauthorizedError) {
+          handleUnauthorized();
+          return;
+        }
+        const errorObject = err as Error;
+        setError(errorObject.message || "Не удалось загрузить задачи");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [filter, page, handleUnauthorized],
+  );
 
   useEffect(() => {
-    let isMounted = true;
-
-    const fetchTodos = async () => {
-      try {
-        const data = await api.getTodos();
-        if (isMounted) {
-          setTodos(data);
-        }
-      } catch (err) {
-        if (isMounted) {
-          const errorObject = err as Error;
-          setError(errorObject.message || "Не удалось загрузить задачи");
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    fetchTodos();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+    void loadTodos(filter, page);
+  }, [filter, page, loadTodos]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTitle.trim()) return;
+    if (!newTitle.trim() || !newDueDate) return;
 
     try {
-      const newTodo = await api.createTodo(newTitle.trim());
-      setTodos((prev) => [...prev, newTodo]);
+      await api.createTodo(newTitle.trim(), newDueDate);
       setNewTitle("");
+      setNewDueDate("");
+      await loadTodos(filter, 1);
     } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        handleUnauthorized();
+        return;
+      }
       const errorObject = err as Error;
       setError(errorObject.message || "Ошибка при создании задачи");
     }
@@ -64,9 +86,13 @@ export const TodoPage: React.FC = () => {
 
   const handleToggleCompleted = async (id: string, currentStatus: boolean) => {
     try {
-      const updatedTodo = await api.updateTodo(id, undefined, !currentStatus);
-      setTodos((prev) => prev.map((t) => (t.id === id ? updatedTodo : t)));
+      await api.updateTodo(id, undefined, !currentStatus);
+      await loadTodos();
     } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        handleUnauthorized();
+        return;
+      }
       const errorObject = err as Error;
       setError(errorObject.message || "Ошибка при изменении статуса");
     }
@@ -80,14 +106,14 @@ export const TodoPage: React.FC = () => {
   const handleSaveTitle = async (id: string) => {
     if (!editingTitle.trim()) return;
     try {
-      const updatedTodo = await api.updateTodo(
-        id,
-        editingTitle.trim(),
-        undefined,
-      );
-      setTodos((prev) => prev.map((t) => (t.id === id ? updatedTodo : t)));
+      await api.updateTodo(id, editingTitle.trim(), undefined);
       setEditingId(null);
+      await loadTodos();
     } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        handleUnauthorized();
+        return;
+      }
       const errorObject = err as Error;
       setError(errorObject.message || "Ошибка при сохранении текста");
     }
@@ -96,8 +122,12 @@ export const TodoPage: React.FC = () => {
   const handleDelete = async (id: string) => {
     try {
       await api.deleteTodo(id);
-      setTodos((prev) => prev.filter((t) => t.id !== id));
+      await loadTodos();
     } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        handleUnauthorized();
+        return;
+      }
       const errorObject = err as Error;
       setError(errorObject.message || "Ошибка при удалении задачи");
     }
@@ -105,15 +135,19 @@ export const TodoPage: React.FC = () => {
 
   const handleLogout = () => {
     api.logout();
-    navigate("/");
+    navigate("/", { replace: true });
   };
 
   const handleUpload = async (id: string, file?: File) => {
     if (!file) return;
     try {
-      const updated = await api.uploadAttachment(id, file);
-      setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
+      await api.uploadAttachment(id, file);
+      await loadTodos();
     } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        handleUnauthorized();
+        return;
+      }
       const errorObject = err as Error;
       setError(errorObject.message || "Ошибка при загрузке файла");
     }
@@ -123,6 +157,10 @@ export const TodoPage: React.FC = () => {
     try {
       await api.downloadAttachment(id);
     } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        handleUnauthorized();
+        return;
+      }
       const errorObject = err as Error;
       setError(errorObject.message || "Ошибка при скачивании файла");
     }
@@ -154,14 +192,21 @@ export const TodoPage: React.FC = () => {
           </div>
         )}
 
-        <form onSubmit={handleCreate} className="flex gap-2 mb-6">
+        <form onSubmit={handleCreate} className="flex flex-wrap gap-2 mb-4">
           <input
             type="text"
             required
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
             placeholder="Что нужно сделать?"
-            className="flex-1 px-4 py-2 bg-zinc-900 border border-zinc-800 rounded focus:outline-none focus:border-zinc-600 text-zinc-200 placeholder-zinc-600"
+            className="flex-1 min-w-[12rem] px-4 py-2 bg-zinc-900 border border-zinc-800 rounded focus:outline-none focus:border-zinc-600 text-zinc-200 placeholder-zinc-600"
+          />
+          <input
+            type="date"
+            required
+            value={newDueDate}
+            onChange={(e) => setNewDueDate(e.target.value)}
+            className="px-3 py-2 bg-zinc-900 border border-zinc-800 rounded focus:outline-none focus:border-zinc-600 text-zinc-200"
           />
           <button
             type="submit"
@@ -170,6 +215,25 @@ export const TodoPage: React.FC = () => {
             Добавить
           </button>
         </form>
+
+        <div className="flex flex-wrap gap-2 mb-6">
+          {FILTERS.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => {
+                setFilter(item.id);
+                setPage(1);
+              }}
+              className={`text-xs px-3 py-1 rounded border ${
+                filter === item.id
+                  ? "bg-zinc-200 text-zinc-900 border-zinc-200"
+                  : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-700"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
 
         {loading ? (
           <p className="text-zinc-500 text-center py-4">
@@ -208,19 +272,24 @@ export const TodoPage: React.FC = () => {
                       autoFocus
                     />
                   ) : (
-                    <span
-                      className={`text-sm tracking-wide transition-all ${
-                        todo.completed
-                          ? "line-through text-zinc-600"
-                          : "text-zinc-300"
-                      }`}
-                    >
-                      {todo.title}
-                    </span>
+                    <div>
+                      <span
+                        className={`text-sm tracking-wide transition-all ${
+                          todo.completed
+                            ? "line-through text-zinc-600"
+                            : "text-zinc-300"
+                        }`}
+                      >
+                        {todo.title}
+                      </span>
+                      <p className="text-xs text-zinc-500 mt-1">
+                        Срок: {new Date(todo.dueDate).toLocaleDateString()}
+                      </p>
+                    </div>
                   )}
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap justify-end">
                   {editingId === todo.id ? (
                     <button
                       onClick={() => handleSaveTitle(todo.id)}
@@ -268,6 +337,26 @@ export const TodoPage: React.FC = () => {
             ))}
           </div>
         )}
+
+        <div className="flex items-center justify-between mt-6 text-sm text-zinc-400">
+          <button
+            disabled={page <= 1}
+            onClick={() => setPage((current) => Math.max(1, current - 1))}
+            className="px-3 py-1 border border-zinc-800 rounded disabled:opacity-40"
+          >
+            Назад
+          </button>
+          <span>
+            Стр. {page} из {totalPages}
+          </span>
+          <button
+            disabled={page >= totalPages}
+            onClick={() => setPage((current) => current + 1)}
+            className="px-3 py-1 border border-zinc-800 rounded disabled:opacity-40"
+          >
+            Дальше
+          </button>
+        </div>
       </div>
     </div>
   );

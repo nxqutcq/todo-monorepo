@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import {
-  StyleSheet,
   Text,
   View,
   TextInput,
@@ -17,6 +16,15 @@ import * as Sharing from "expo-sharing";
 import { styles } from "./styles";
 
 const API_URL = "https://51.20.85.74.sslip.io";
+const LIMIT = 10;
+const FILTERS = [
+  { id: "all", label: "Все" },
+  { id: "active", label: "Активные" },
+  { id: "done", label: "Готово" },
+  { id: "overdue", label: "Срок" },
+] as const;
+
+type TodoFilter = (typeof FILTERS)[number]["id"];
 
 interface Todo {
   id: string;
@@ -24,6 +32,7 @@ interface Todo {
   completed: boolean;
   userId: string;
   attachmentKey?: string;
+  dueDate: string;
 }
 
 export default function App() {
@@ -37,19 +46,39 @@ export default function App() {
 
   const [todos, setTodos] = useState<Todo[]>([]);
   const [newTitle, setNewTitle] = useState("");
+  const [newDueDate, setNewDueDate] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
+  const [filter, setFilter] = useState<TodoFilter>("all");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+
+  const totalPages = Math.max(1, Math.ceil(total / LIMIT));
 
   useEffect(() => {
     checkToken();
   }, []);
 
+  useEffect(() => {
+    if (screen === "todos") {
+      fetchTodos();
+    }
+  }, [screen, filter, page]);
+
   const checkToken = async () => {
     const token = await AsyncStorage.getItem("token");
     if (token) {
       setScreen("todos");
-      fetchTodos(token);
     }
+  };
+
+  const handleLogout = async () => {
+    await AsyncStorage.removeItem("token");
+    setTodos([]);
+    setEmail("");
+    setPassword("");
+    setLoading(false);
+    setScreen("auth");
   };
 
   const getHeaders = async (tokenOverride?: string) => {
@@ -58,6 +87,14 @@ export default function App() {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
+  };
+
+  const ensureAuthorized = async (res: Response): Promise<boolean> => {
+    if (res.status === 401) {
+      await handleLogout();
+      return false;
+    }
+    return true;
   };
 
   const handleAuth = async () => {
@@ -85,8 +122,8 @@ export default function App() {
       if (isLoginView) {
         if (data.token) {
           await AsyncStorage.setItem("token", data.token);
+          setPage(1);
           setScreen("todos");
-          fetchTodos(data.token);
         }
       } else {
         setIsLoginView(true);
@@ -99,21 +136,19 @@ export default function App() {
     }
   };
 
-  const handleLogout = async () => {
-    await AsyncStorage.removeItem("token");
-    setTodos([]);
-    setEmail("");
-    setPassword("");
-    setScreen("auth");
-  };
-
-  const fetchTodos = async (tokenOverride?: string) => {
+  const fetchTodos = async () => {
+    setLoading(true);
     try {
-      const headers = await getHeaders(tokenOverride);
-      const res = await fetch(`${API_URL}/todos`, { headers });
+      const headers = await getHeaders();
+      const res = await fetch(
+        `${API_URL}/todos?filter=${filter}&page=${page}&limit=${LIMIT}`,
+        { headers },
+      );
+      if (!(await ensureAuthorized(res))) return;
       if (res.ok) {
         const data = await res.json();
-        setTodos(data);
+        setTodos(data.items);
+        setTotal(data.total);
       }
     } catch (err) {
       setError("Не удалось загрузить задачи");
@@ -123,18 +158,26 @@ export default function App() {
   };
 
   const handleCreateTodo = async () => {
-    if (!newTitle.trim()) return;
+    if (!newTitle.trim() || !newDueDate.trim()) {
+      setError("Укажите текст и срок");
+      return;
+    }
     try {
       const headers = await getHeaders();
       const res = await fetch(`${API_URL}/todos`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ title: newTitle.trim() }),
+        body: JSON.stringify({
+          title: newTitle.trim(),
+          dueDate: newDueDate.trim(),
+        }),
       });
+      if (!(await ensureAuthorized(res))) return;
       if (res.ok) {
-        const newTodo = await res.json();
-        setTodos((prev) => [...prev, newTodo]);
         setNewTitle("");
+        setNewDueDate("");
+        setPage(1);
+        fetchTodos();
       }
     } catch (err) {
       setError("Ошибка создания задачи");
@@ -149,10 +192,8 @@ export default function App() {
         headers,
         body: JSON.stringify({ completed: !currentStatus }),
       });
-      if (res.ok) {
-        const updated = await res.json();
-        setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
-      }
+      if (!(await ensureAuthorized(res))) return;
+      if (res.ok) fetchTodos();
     } catch (err) {
       setError("Ошибка изменения статуса");
     }
@@ -167,10 +208,10 @@ export default function App() {
         headers,
         body: JSON.stringify({ title: editingTitle.trim() }),
       });
+      if (!(await ensureAuthorized(res))) return;
       if (res.ok) {
-        const updated = await res.json();
-        setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
         setEditingId(null);
+        fetchTodos();
       }
     } catch (err) {
       setError("Ошибка обновления текста");
@@ -198,12 +239,9 @@ export default function App() {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body,
       });
-      if (res.ok) {
-        const updated = await res.json();
-        setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
-      } else {
-        setError("Ошибка загрузки файла");
-      }
+      if (!(await ensureAuthorized(res))) return;
+      if (res.ok) fetchTodos();
+      else setError("Ошибка загрузки файла");
     } catch (err) {
       setError("Ошибка загрузки файла");
     }
@@ -218,6 +256,10 @@ export default function App() {
         target,
         { headers: token ? { Authorization: `Bearer ${token}` } : {} },
       );
+      if (result.status === 401) {
+        await handleLogout();
+        return;
+      }
       if (result.status !== 200) {
         setError("Ошибка скачивания файла");
         return;
@@ -237,9 +279,8 @@ export default function App() {
         method: "DELETE",
         headers,
       });
-      if (res.ok) {
-        setTodos((prev) => prev.filter((t) => String(t.id) !== String(id)));
-      }
+      if (!(await ensureAuthorized(res))) return;
+      if (res.ok) fetchTodos();
     } catch (err) {
       setError("Ошибка удаления");
     }
@@ -316,95 +357,169 @@ export default function App() {
         </TouchableOpacity>
       </View>
 
+      {error ? (
+        <Text style={[styles.errorText, { marginHorizontal: 20 }]}>
+          {error}
+        </Text>
+      ) : null}
+
       <View style={styles.todoForm}>
         <TextInput
-          style={[styles.input, { flex: 1, marginBottom: 0, marginRight: 8 }]}
+          style={[styles.input, { flex: 1, marginBottom: 8, marginRight: 8 }]}
           placeholder="Что нужно сделать?"
           placeholderTextColor="#4b5563"
           value={newTitle}
           onChangeText={setNewTitle}
+        />
+        <TextInput
+          style={[styles.input, { width: 130, marginBottom: 8, marginRight: 8 }]}
+          placeholder="ГГГГ-ММ-ДД"
+          placeholderTextColor="#4b5563"
+          value={newDueDate}
+          onChangeText={setNewDueDate}
         />
         <TouchableOpacity style={styles.addButton} onPress={handleCreateTodo}>
           <Text style={styles.addButtonText}>+</Text>
         </TouchableOpacity>
       </View>
 
-      <FlatList
-        data={todos}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContainer}
-        renderItem={({ item }) => (
-          <View style={styles.todoItem}>
-            <TouchableOpacity
+      <View style={styles.filterRow}>
+        {FILTERS.map((item) => (
+          <TouchableOpacity
+            key={item.id}
+            style={[
+              styles.filterChip,
+              filter === item.id && styles.filterChipActive,
+            ]}
+            onPress={() => {
+              setFilter(item.id);
+              setPage(1);
+            }}
+          >
+            <Text
               style={[
-                styles.checkbox,
-                item.completed && styles.checkboxChecked,
+                styles.filterChipText,
+                filter === item.id && styles.filterChipTextActive,
               ]}
-              onPress={() => handleToggleTodo(item.id, item.completed)}
-            />
+            >
+              {item.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
 
-            {editingId === item.id ? (
-              <TextInput
-                style={styles.editInput}
-                value={editingTitle}
-                onChangeText={setEditingTitle}
-                onSubmitEditing={() => handleSaveTitle(item.id)}
-                autoFocus
-              />
-            ) : (
-              <Text
+      {loading ? (
+        <ActivityIndicator color="#a1a1aa" />
+      ) : (
+        <FlatList
+          data={todos}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContainer}
+          ListEmptyComponent={
+            <Text style={styles.pagerText}>Задач нет</Text>
+          }
+          renderItem={({ item }) => (
+            <View style={styles.todoItem}>
+              <TouchableOpacity
                 style={[
-                  styles.todoText,
-                  item.completed && styles.todoTextCompleted,
+                  styles.checkbox,
+                  item.completed && styles.checkboxChecked,
                 ]}
-              >
-                {item.title}
-              </Text>
-            )}
+                onPress={() => handleToggleTodo(item.id, item.completed)}
+              />
 
-            <View style={styles.actions}>
               {editingId === item.id ? (
-                <TouchableOpacity
-                  onPress={() => handleSaveTitle(item.id)}
-                  style={styles.actionBtn}
-                >
-                  <Text style={{ color: "#34d399", fontSize: 12 }}>ОК</Text>
-                </TouchableOpacity>
+                <TextInput
+                  style={styles.editInput}
+                  value={editingTitle}
+                  onChangeText={setEditingTitle}
+                  onSubmitEditing={() => handleSaveTitle(item.id)}
+                  autoFocus
+                />
               ) : (
-                <TouchableOpacity
-                  onPress={() => {
-                    setEditingId(item.id);
-                    setEditingTitle(item.title);
-                  }}
-                  style={styles.actionBtn}
-                >
-                  <Text style={{ color: "#a1a1aa", fontSize: 12 }}>Ред.</Text>
-                </TouchableOpacity>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={[
+                      styles.todoText,
+                      item.completed && styles.todoTextCompleted,
+                    ]}
+                  >
+                    {item.title}
+                  </Text>
+                  <Text style={styles.dueText}>
+                    Срок: {new Date(item.dueDate).toLocaleDateString()}
+                  </Text>
+                </View>
               )}
-              <TouchableOpacity
-                onPress={() => handleUploadAttachment(item.id)}
-                style={styles.actionBtn}
-              >
-                <Text style={{ color: "#a1a1aa", fontSize: 12 }}>Файл</Text>
-              </TouchableOpacity>
-              {item.attachmentKey ? (
+
+              <View style={styles.actions}>
+                {editingId === item.id ? (
+                  <TouchableOpacity
+                    onPress={() => handleSaveTitle(item.id)}
+                    style={styles.actionBtn}
+                  >
+                    <Text style={{ color: "#34d399", fontSize: 12 }}>ОК</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setEditingId(item.id);
+                      setEditingTitle(item.title);
+                    }}
+                    style={styles.actionBtn}
+                  >
+                    <Text style={{ color: "#a1a1aa", fontSize: 12 }}>Ред.</Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity
-                  onPress={() => handleDownloadAttachment(item.id)}
+                  onPress={() => handleUploadAttachment(item.id)}
                   style={styles.actionBtn}
                 >
-                  <Text style={{ color: "#a1a1aa", fontSize: 12 }}>Скач.</Text>
+                  <Text style={{ color: "#a1a1aa", fontSize: 12 }}>Файл</Text>
                 </TouchableOpacity>
-              ) : null}
-              <TouchableOpacity
-                onPress={() => handleDeleteTodo(item.id)}
-                style={styles.actionBtn}
-              >
-                <Text style={{ color: "#f87171", fontSize: 12 }}>Удал.</Text>
-              </TouchableOpacity>
+                {item.attachmentKey ? (
+                  <TouchableOpacity
+                    onPress={() => handleDownloadAttachment(item.id)}
+                    style={styles.actionBtn}
+                  >
+                    <Text style={{ color: "#a1a1aa", fontSize: 12 }}>Скач.</Text>
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity
+                  onPress={() => handleDeleteTodo(item.id)}
+                  style={styles.actionBtn}
+                >
+                  <Text style={{ color: "#f87171", fontSize: 12 }}>Удал.</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
-        )}
-      />
+          )}
+        />
+      )}
+
+      <View style={styles.pager}>
+        <TouchableOpacity
+          disabled={page <= 1}
+          onPress={() => setPage((current) => Math.max(1, current - 1))}
+        >
+          <Text style={[styles.pagerText, page <= 1 && { opacity: 0.4 }]}>
+            Назад
+          </Text>
+        </TouchableOpacity>
+        <Text style={styles.pagerText}>
+          Стр. {page} из {totalPages}
+        </Text>
+        <TouchableOpacity
+          disabled={page >= totalPages}
+          onPress={() => setPage((current) => current + 1)}
+        >
+          <Text
+            style={[styles.pagerText, page >= totalPages && { opacity: 0.4 }]}
+          >
+            Дальше
+          </Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }

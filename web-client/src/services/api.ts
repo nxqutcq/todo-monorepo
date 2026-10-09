@@ -1,6 +1,13 @@
 const BASE_URL =
   import.meta.env.VITE_API_URL ?? "https://51.20.85.74.sslip.io";
 
+export class UnauthorizedError extends Error {
+  constructor() {
+    super("Сессия истекла");
+    this.name = "UnauthorizedError";
+  }
+}
+
 const getHeaders = () => {
   const token = localStorage.getItem("token");
   return {
@@ -9,6 +16,26 @@ const getHeaders = () => {
   };
 };
 
+async function parseResponse(res: Response) {
+  if (res.status === 401) {
+    localStorage.removeItem("token");
+    throw new UnauthorizedError();
+  }
+  if (!res.ok) {
+    let message = "Ошибка запроса";
+    try {
+      const data = await res.json();
+      message = data.message || message;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(message);
+  }
+  return res;
+}
+
+export type TodoFilter = "all" | "active" | "done" | "overdue";
+
 export const api = {
   register: async (email: string, password: string) => {
     const res = await fetch(`${BASE_URL}/auth/register`, {
@@ -16,8 +43,7 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
     });
-    if (!res.ok)
-      throw new Error((await res.json()).message || "Ошибка регистрации");
+    await parseResponse(res);
     return res.json();
   },
 
@@ -27,7 +53,7 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
     });
-    if (!res.ok) throw new Error((await res.json()).message || "Ошибка входа");
+    await parseResponse(res);
     const data = await res.json();
     if (data.token) localStorage.setItem("token", data.token);
     return data;
@@ -37,19 +63,38 @@ export const api = {
     localStorage.removeItem("token");
   },
 
-  getTodos: async () => {
-    const res = await fetch(`${BASE_URL}/todos`, { headers: getHeaders() });
-    if (!res.ok) throw new Error("Не удалось загрузить задачи");
-    return res.json();
+  getTodos: async (filter: TodoFilter = "all", page = 1, limit = 10) => {
+    const params = new URLSearchParams({
+      filter,
+      page: String(page),
+      limit: String(limit),
+    });
+    const res = await fetch(`${BASE_URL}/todos?${params}`, {
+      headers: getHeaders(),
+    });
+    await parseResponse(res);
+    return res.json() as Promise<{
+      items: Array<{
+        id: string;
+        title: string;
+        completed: boolean;
+        userId: string;
+        attachmentKey?: string;
+        dueDate: string;
+      }>;
+      page: number;
+      limit: number;
+      total: number;
+    }>;
   },
 
-  createTodo: async (title: string) => {
+  createTodo: async (title: string, dueDate: string) => {
     const res = await fetch(`${BASE_URL}/todos`, {
       method: "POST",
       headers: getHeaders(),
-      body: JSON.stringify({ title }),
+      body: JSON.stringify({ title, dueDate }),
     });
-    if (!res.ok) throw new Error("Не удалось создать задачу");
+    await parseResponse(res);
     return res.json();
   },
 
@@ -59,7 +104,7 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify({ title, completed }),
     });
-    if (!res.ok) throw new Error("Не удалось обновить задачу");
+    await parseResponse(res);
     return res.json();
   },
 
@@ -68,7 +113,7 @@ export const api = {
       method: "DELETE",
       headers: getHeaders(),
     });
-    if (!res.ok) throw new Error("Не удалось удалить задачу");
+    await parseResponse(res);
     return res.json();
   },
 
@@ -81,7 +126,7 @@ export const api = {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body,
     });
-    if (!res.ok) throw new Error("Не удалось загрузить файл");
+    await parseResponse(res);
     return res.json();
   },
 
@@ -89,7 +134,7 @@ export const api = {
     const res = await fetch(`${BASE_URL}/todos/${id}/attachment`, {
       headers: getHeaders(),
     });
-    if (!res.ok) throw new Error("Не удалось скачать файл");
+    await parseResponse(res);
     const blob = await res.blob();
     const disposition = res.headers.get("Content-Disposition") || "";
     const match = disposition.match(/filename="?([^"]+)"?/);

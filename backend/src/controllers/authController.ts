@@ -62,7 +62,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     }
 
     const token = jwt.sign({ userId: user.id }, getJwtSecret(), {
-      expiresIn: "30d",
+      expiresIn: "15m",
     });
 
     res.status(200).json({ token });
