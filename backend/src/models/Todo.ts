@@ -31,7 +31,6 @@ const todoSchema = new Schema<ITodo>(
     },
     dueDate: {
       type: Date,
-      required: true,
     },
   },
   {

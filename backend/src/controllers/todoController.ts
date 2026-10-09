@@ -33,7 +33,11 @@ export const getTodos = async (
       query.completed = true;
     } else if (filter === "active") {
       query.completed = false;
-      query.dueDate = { $gte: now };
+      query.$or = [
+        { dueDate: { $exists: false } },
+        { dueDate: null },
+        { dueDate: { $gte: now } },
+      ];
     } else if (filter === "overdue") {
       query.completed = false;
       query.dueDate = { $lt: now };

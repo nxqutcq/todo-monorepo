@@ -32,7 +32,14 @@ interface Todo {
   completed: boolean;
   userId: string;
   attachmentKey?: string;
-  dueDate: string;
+  dueDate?: string;
+}
+
+function formatDueDate(value?: string): string {
+  if (!value) return "не указан";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "не указан";
+  return date.toLocaleDateString("ru-RU");
 }
 
 export default function App() {
@@ -447,7 +454,7 @@ export default function App() {
                     {item.title}
                   </Text>
                   <Text style={styles.dueText}>
-                    Срок: {new Date(item.dueDate).toLocaleDateString()}
+                    Срок: {formatDueDate(item.dueDate)}
                   </Text>
                 </View>
               )}

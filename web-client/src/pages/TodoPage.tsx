@@ -8,7 +8,14 @@ interface Todo {
   completed: boolean;
   userId: string;
   attachmentKey?: string;
-  dueDate: string;
+  dueDate?: string;
+}
+
+function formatDueDate(value?: string): string {
+  if (!value) return "не указан";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "не указан";
+  return date.toLocaleDateString("ru-RU");
 }
 
 const FILTERS: { id: TodoFilter; label: string }[] = [
@@ -283,7 +290,7 @@ export const TodoPage: React.FC = () => {
                         {todo.title}
                       </span>
                       <p className="text-xs text-zinc-500 mt-1">
-                        Срок: {new Date(todo.dueDate).toLocaleDateString()}
+                        Срок: {formatDueDate(todo.dueDate)}
                       </p>
                     </div>
                   )}
