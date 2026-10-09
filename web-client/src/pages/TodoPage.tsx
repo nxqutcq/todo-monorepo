@@ -44,9 +44,9 @@ export const TodoPage: React.FC = () => {
       setLoading(true);
       try {
         const data = await api.getTodos(nextFilter, nextPage, limit);
-        setTodos(data.items);
-        setTotal(data.total);
-        setPage(data.page);
+        setTodos(Array.isArray(data.items) ? data.items : []);
+        setTotal(Number(data.total) || 0);
+        setPage(Number(data.page) || nextPage);
       } catch (err) {
         if (err instanceof UnauthorizedError) {
           handleUnauthorized();

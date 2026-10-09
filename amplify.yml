@@ -17,3 +17,7 @@ applications:
       cache:
         paths:
           - node_modules/**/*
+    customRules:
+      - source: /<*>
+        target: /index.html
+        status: "404-200"

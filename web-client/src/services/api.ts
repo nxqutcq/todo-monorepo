@@ -73,19 +73,21 @@ export const api = {
       headers: getHeaders(),
     });
     await parseResponse(res);
-    return res.json() as Promise<{
-      items: Array<{
-        id: string;
-        title: string;
-        completed: boolean;
-        userId: string;
-        attachmentKey?: string;
-        dueDate: string;
-      }>;
-      page: number;
-      limit: number;
-      total: number;
-    }>;
+    const data = await res.json();
+    if (Array.isArray(data)) {
+      return {
+        items: data,
+        page,
+        limit,
+        total: data.length,
+      };
+    }
+    return {
+      items: data.items ?? [],
+      page: data.page ?? page,
+      limit: data.limit ?? limit,
+      total: data.total ?? 0,
+    };
   },
 
   createTodo: async (title: string, dueDate: string) => {
